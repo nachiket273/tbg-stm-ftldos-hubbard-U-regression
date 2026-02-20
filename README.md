@@ -190,11 +190,3 @@ This repository is intended for:
 This repository is not intended for direct experimental parameter inference without further validation
 
 ---
-
-# Citation
-
-If you use this code, please cite:
-
-```bash
-
-```
