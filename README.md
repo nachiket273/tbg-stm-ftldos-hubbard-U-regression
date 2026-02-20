@@ -1,3 +1,4 @@
+[![DOI](https://zenodo.org/badge/1161607710.svg)](https://doi.org/10.5281/zenodo.18717017)
 # Learning Interaction-Dependent Features from STM FT-LDOS Images using Machine Learning
 
 This repository contains the code accompanying the research work:
