@@ -67,7 +67,9 @@ conda activate stm_ml
 Install dependencies:
 
 ```bash
-pip install torch torchvision numpy scipy scikit-learn matplotlib
+pip install torch torchvision numpy scipy scikit-learn matplotlib tqdm
+pip install numba
+pip install grad-cam
 ```
 
 ---
