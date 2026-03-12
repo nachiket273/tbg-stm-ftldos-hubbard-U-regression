@@ -191,3 +191,17 @@ This repository is intended for:
 This repository is not intended for direct experimental parameter inference without further validation
 
 ---
+
+# Citation
+
+```
+@misc{tanksale2026predictionatomistichubbardu,
+      title={Prediction of the atomistic Hubbard U interaction from moir\'e system STM-images using image recognition}, 
+      author={Nachiket Tanksale and Tobias Stauber},
+      year={2026},
+      eprint={2602.18890},
+      archivePrefix={arXiv},
+      primaryClass={cond-mat.mes-hall},
+      url={https://arxiv.org/abs/2602.18890}, 
+}
+```
