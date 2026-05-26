@@ -1,4 +1,5 @@
-[![DOI](https://zenodo.org/badge/1161607710.svg)](https://doi.org/10.5281/zenodo.18717017)
+[![DOI](https://zenodo.org/badge/1161607710.svg)](https://doi.org/10.5281/zenodo.20400703)
+
 # Prediction of Hubbard Interaction Strength from FT-LDOS Images of Moiré Systems using Machine Learning
 
 This repository contains the code accompanying the research work:
