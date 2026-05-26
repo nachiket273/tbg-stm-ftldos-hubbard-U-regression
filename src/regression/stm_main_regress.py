@@ -68,8 +68,9 @@ if __name__ == "__main__":
     early_stopping_patience = config.getint('Common Parameters', 'early_stopping_patience', fallback=7)
     lr_scheduler = config.get('Common Parameters', 'lr_scheduler', fallback='step')
     model_name = config.get('Common Parameters', 'model', fallback='resnet18')
-
     loss_name = config.get('Regression', 'loss_function', fallback='mean_squared_error')
+    train_tf_label = config.get('Common Parameters', 'train_tf_label', fallback='clean')
+    test_tf_label = config.get('Common Parameters', 'test_tf_label', fallback='clean')
 
     if val_split + test_split >= 1.0:
         raise ValueError("The sum of validation_split and test_split must be less than 1.0")
@@ -97,13 +98,24 @@ if __name__ == "__main__":
     test_stats = {'loss': float('inf'), 'mae': 0.0, 'mse': 0.0, 'r2': 0.0, 'rmse': 0.0 }
 
     # Load data
-    train_loader, val_loader, test_loader = get_data_loaders_regress(
+    train_loader, val_loader, _ = get_data_loaders_regress(
         args.data_dir, 
         batch_size=batch_size, 
         val_split=val_split, 
         test_split=test_split, 
         input_dim=input_dim,
-        seed=seed
+        seed=seed,
+        tf_label=train_tf_label
+    )
+
+    _, _, test_loader = get_data_loaders_regress(
+        args.data_dir,
+        batch_size=batch_size,
+        val_split=val_split,
+        test_split=test_split,
+        input_dim=input_dim,
+        seed=seed,
+        tf_label=test_tf_label
     )
 
     # Save mean and std for reference from train_loader transform to use during inference

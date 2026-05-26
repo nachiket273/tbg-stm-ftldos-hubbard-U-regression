@@ -14,7 +14,9 @@ import os
 import random
 from sklearn.model_selection import train_test_split
 import torch
+import torch.nn.functional as F
 import torchvision.models as models
+import torchvision.transforms.functional as TF
 from typing import List, Tuple, Optional, Union
 
 
@@ -251,3 +253,120 @@ def seed_everything(seed: int=42) -> None:
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+class GaussianNoise(torch.nn.Module):
+    """Adds stochastic white noise to simulate thermal/shot noise."""
+    def __init__(self, std_range=(0.005, 0.02), p=1.0):
+        super().__init__()
+        self.std_range = std_range
+        self.p = p
+
+    def forward(self, x):
+        if random.random() > self.p:
+            return x
+        std = random.uniform(*self.std_range)
+        return x + torch.randn_like(x) * std
+    
+
+class TipAnisotropyBlur(torch.nn.Module):
+    """Simulates non-ideal tip shapes using elliptical Gaussian kernels."""
+    def __init__(self, sigma_range=(0.5, 1.2), ratio_range=(1.0, 1.2), p=1.0):
+        super().__init__()
+        self.sigma_range = sigma_range
+        self.ratio_range = ratio_range
+        self.p = p
+
+    def _get_kernel(self, sigma, ratio, theta, size=15, device='cpu'):
+        ax = torch.linspace(-(size-1)/2, (size-1)/2, size, device=device)
+        xx, yy = torch.meshgrid(ax, ax, indexing='ij')
+
+        cos_t = torch.cos(torch.tensor(theta, device=device))
+        sin_t = torch.sin(torch.tensor(theta, device=device))
+
+        x_rot = xx * cos_t - yy * sin_t
+        y_rot = xx * sin_t + yy * cos_t
+
+        kernel = torch.exp(-0.5 * (x_rot**2 / sigma**2 +
+                                y_rot**2 / (sigma*ratio)**2))
+        return kernel / kernel.sum()
+
+    def forward(self, x):
+        if random.random() > self.p:
+            return x
+        sigma = random.uniform(*self.sigma_range)
+        ratio = random.uniform(*self.ratio_range)
+        theta = random.uniform(0, np.pi)
+        kernel = self._get_kernel(sigma, ratio, theta).to(x.device,  dtype=x.dtype)
+        return F.conv2d(x.unsqueeze(0), kernel.view(1,1,15,15), padding=7).squeeze(0)
+    
+
+class SymmetryBreakingStrain(torch.nn.Module):
+    """Lighter version: Simulates C1 symmetry breaking using optimized affine wrappers."""
+    def __init__(self, strain_range=(0.0, 0.03), p=1.0):
+        super().__init__()
+        self.strain_range = strain_range
+        self.p = p
+
+    def forward(self, x):
+        if random.random() > self.p:
+            return x
+
+        # 1. Store original type and move to Float32 for stability
+        orig_dtype = x.dtype
+        img = x.to(torch.float32)
+
+        # 2. Calculate physical strain parameters
+        # Strain 's' maps to scaling and shearing to break C1 symmetry
+        s = random.uniform(*self.strain_range)
+        
+        # We translate your strain matrix logic into angle/scale/shear
+        # s_angle is small, but breaks the perfect 60-degree symmetry of TBG
+        scale = 1.0 + s 
+        shear = [s * 10, 0] # Horizontal shear in degrees
+
+        # 3. Apply transformation using optimized Torchvision backend
+        # This avoids the F.affine_grid kernel crash issue
+        img = TF.affine(
+            img.unsqueeze(0), 
+            angle=0, 
+            translate=[0, 0], 
+            scale=scale, 
+            shear=shear,
+            interpolation=TF.InterpolationMode.BILINEAR
+        ).squeeze(0)
+
+        # 4. Cast back to original precision (Double) if necessary for your HF data
+        return img.to(orig_dtype)
+    
+
+class ScanLineNoise(torch.nn.Module):
+    """Simulates correlated noise (striations) along the scan axis."""
+    def __init__(self, strength_range=(0.01, 0.04), p=0.5):
+        super().__init__()
+        self.strength_range = strength_range
+        self.p = p
+
+    def forward(self, x):
+        if random.random() > self.p:
+            return x
+        c, h, w = x.shape
+        strength = random.uniform(*self.strength_range)
+        # Noise correlated across rows (horizontal striations)
+        lines = torch.randn(h, 1).repeat(1, w).to(x.device) * strength
+        return x + lines
+
+
+class GainShift(torch.nn.Module):
+    def __init__(self, scale_range=(0.9,1.1), shift_range=(-0.02,0.02), p=0.5):
+        super().__init__()
+        self.scale_range = scale_range
+        self.shift_range = shift_range
+        self.p = p
+
+    def forward(self, x):
+        if random.random() > self.p:
+            return x
+        a = random.uniform(*self.scale_range)
+        b = random.uniform(*self.shift_range)
+        return a*x + b

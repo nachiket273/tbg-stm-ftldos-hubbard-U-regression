@@ -28,7 +28,7 @@ project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
 
 from common.helper import get_split_indices
-
+from common.helper import GainShift, GaussianNoise, ScanLineNoise, SymmetryBreakingStrain, TipAnisotropyBlur
 
 class STMTBGDatasetReg(Dataset):
     """
@@ -73,12 +73,78 @@ class STMTBGDatasetReg(Dataset):
             return image, torch.tensor(u_value, dtype=torch.float32)
         
         return image, torch.tensor(0.0, dtype=torch.float32)  # Dummy label if not provided
-        
+
+
+def get_transforms_regress(mean: Optional[List[float]], 
+                           std: Optional[List[float]], 
+                           input_dim: int=256,
+                           label: str ='clean') -> transforms.Compose:
+    """
+    Get transforms for regression based on the specified label type.
+    The function applies different augmentations based on the label, which can be
+    'clean', 'mild', 'symb', or 'noisy'.
+
+    Parameters
+    -----------
+        mean: Optional[List[float]]
+            The mean values for normalization (if None, no normalization is applied).
+        std: Optional[List[float]]
+            The standard deviation values for normalization (if None, no normalization is applied).
+        input_dim: int
+            The dimension to resize images to.
+        label: str
+            The type of transformation to apply. One of ['clean', 'mild', 'symb', 'noisy'].
+
+    Returns
+    ---------
+        transforms.Compose: A composition of transformations to apply to the images.
+    """
+    if not isinstance(mean, torch.Tensor):
+        mean = torch.tensor(mean)
+    if not isinstance(std, torch.Tensor):
+        std = torch.tensor(std)
+    if label == 'clean':
+        return transforms.Compose([
+            transforms.Resize((input_dim, input_dim)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=mean.tolist(), std=std.tolist())
+        ])
+    elif label == 'mild':
+        return transforms.Compose([
+            transforms.Resize((input_dim, input_dim)),
+            transforms.ToTensor(),
+            GainShift(scale_range=(0.98, 1.02), shift_range=(-0.01, 0.01), p=0.3),
+            GaussianNoise(std_range=(0.001, 0.005), p=0.3),
+            ScanLineNoise(strength_range=(0.005, 0.01), p=0.2),
+            transforms.Normalize(mean=mean.tolist(), std=std.tolist())
+        ])
+    elif label == 'symb':
+        return transforms.Compose([
+            transforms.Resize((input_dim, input_dim)),
+            transforms.ToTensor(),
+            SymmetryBreakingStrain(strain_range=(0.01, 0.03), p=0.8),
+            GaussianNoise(std_range=(0.001, 0.005), p=0.3),
+            transforms.Normalize(mean=mean.tolist(), std=std.tolist())
+        ])
+    elif label == 'noisy':
+        return transforms.Compose([
+            transforms.Resize((input_dim, input_dim)),
+            transforms.ToTensor(),
+            GaussianNoise(std_range=(0.004, 0.012), p=0.3),
+            ScanLineNoise(strength_range=(0.006, 0.015), p=0.3),
+            TipAnisotropyBlur(sigma_range=(0.5, 0.9), ratio_range=(1.0, 1.15), p=0.25),
+            GainShift(scale_range=(0.95, 1.05), shift_range=(-0.01, 0.01), p=0.3),
+            transforms.Normalize(mean=mean.tolist(), std=std.tolist())
+        ])
+    else:
+        raise ValueError(f"Unknown label type: {label}. Expected one of ['clean', 'mild', 'symb', 'noisy'].")        
+
 
 def get_data_loaders_regress(data_dir: str, batch_size: int=32, val_split: float=0.15,
                              test_split: float=0.15,
                              input_dim: int=256,
-                             seed: int=42) -> Tuple[DataLoader, DataLoader, DataLoader]:
+                             seed: int=42,
+                             tf_label: str='clean') -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Creates data loaders for a regression task.
 
@@ -94,6 +160,10 @@ def get_data_loaders_regress(data_dir: str, batch_size: int=32, val_split: float
             The proportion of the dataset to use for testing.
         input_dim: int
             The dimension to resize images to.
+        seed: int
+            Random seed for reproducibility.
+        tf_label: str
+            Label for the type of transformation to apply.
 
     Returns
     ---------
@@ -145,14 +215,8 @@ def get_data_loaders_regress(data_dir: str, batch_size: int=32, val_split: float
     mean = channels_sum / total_pixels
     std = torch.sqrt((channels_squared_sum / total_pixels) - (mean ** 2))
 
-    # Update the transform with normalization
-    transform = transforms.Compose([
-        transforms.Resize((input_dim, input_dim)),
-        # HighPassFilter(4),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean.tolist(), std=std.tolist())
-    ])
-
+    # Get the transforms
+    transform = get_transforms_regress(mean, std, input_dim=input_dim, label=tf_label)
     dataset = STMTBGDatasetReg(data_dir, transform=transform, label=True)
 
     train_dataset = Subset(dataset, train_indices)

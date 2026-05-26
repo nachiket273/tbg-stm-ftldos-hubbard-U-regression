@@ -32,13 +32,14 @@ sys.path.insert(0, project_root)
 
 from common.helper import get_pretrained_model, load_model, seed_everything
 from regression.model_regress import SimpleFCRegressorModel, SimpleConvRegressorModel, HybridResNetRegressor
-from regression.run_regress import STMTBGDatasetReg, evaluate_regress
+from regression.run_regress import STMTBGDatasetReg, evaluate_regress, get_transforms_regress
 
 
 def get_test_loader(data_dir: str, batch_size: int=32, input_dim: int=256,
                     label: bool=False,
                     mean: Optional[List[float]]=None,
-                    std: Optional[List[float]]=None) -> DataLoader:
+                    std: Optional[List[float]]=None,
+                    test_tf_label: str='clean') -> DataLoader:
     """
     Creates a data loader for testing a regression model.
 
@@ -52,17 +53,18 @@ def get_test_loader(data_dir: str, batch_size: int=32, input_dim: int=256,
             The dimension to resize images to.
         label: bool
             Whether the dataset includes labels.
+        mean: Optional[List[float]]
+            The mean values for normalization (if None, no normalization is applied).
+        std: Optional[List[float]]
+            The standard deviation values for normalization (if None, no normalization is applied).
+        test_tf_label: str
+            Label for the type of transformation to apply to the test dataset.
     
     Returns
     --------
 
     """
-    transform = transforms.Compose([
-        transforms.Resize((input_dim, input_dim)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std)
-    ])
-
+    transform = get_transforms_regress(mean=mean, std=std, input_dim=input_dim, label=test_tf_label)
     dataset = STMTBGDatasetReg(data_dir, transform=transform, label=label)
     test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     return test_loader
@@ -99,6 +101,7 @@ if __name__ == "__main__":
     mean = config.get('Common Parameters', 'mean', fallback='[0.485, 0.456, 0.406]')
     std = config.get('Common Parameters', 'std', fallback='[0.229, 0.224, 0.225]')
     loss_name = config.get('Regression', 'loss_function', fallback='mean_squared_error')
+    test_tf_label = config.get('Common Parameters', 'test_tf_label', fallback='clean')
 
     # Convert mean and std from string to list
     mean = [float(x) for x in mean.strip('[]').split(',')]
@@ -112,7 +115,8 @@ if __name__ == "__main__":
         batch_size=batch_size,
         input_dim=input_dim,
         label=args.label,
-        mean=mean, std=std
+        mean=mean, std=std,
+        test_tf_label=test_tf_label
     )
 
     # Load a pre-trained model
